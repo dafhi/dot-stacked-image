@@ -28,9 +28,8 @@ var filename = ".bmp"
   sRGBi.dcol_sq -> delta_col (now uses sqr)
   sRGBi.cast and delta_col to ulong fixes
   eigens ordering in imager.props_from
-  3. hash more responsive to small seed
-  2. improved eigenvectors foundation
-  1. hyperparameters, speed improvement
+  2. hash more responsive to small seed
+  1. improved eigenvectors foundation
  
 '/
 
@@ -807,8 +806,8 @@ type t
   as nBitHashFloat    r = type(6, 0) '' hue sat val :p
   as nBitHashFloat    g = type(1, 0)
   as nBitHashFloat    b = type(1, 0)
-  as nBitHashFloat    a = type(.8, 0.6) '' 
-  'as nBitHashFloat    a = type(4, 0.005) '' 
+  as nBitHashFloat    a = type(1.0, 0.4) '' 
+  'as nBitHashFloat    a = type(2, 0.005) '' 
  
   decl prop           full ac ulong
  
@@ -1088,8 +1087,8 @@ end prop
   
 #if 1
 const sng               radScale0 = .24
-const sng               radExpon = .445
-const sng               radDetailRush = 0.18
+const sng               radExpon = .425
+const sng               radDetailRush = 0.185
 #elseif 0
 #else
 const sng               radScale0 = .24
@@ -1259,12 +1258,12 @@ sub props_from( byref p as hdr_vars ptr)
               ' eigenvectors.  order is important - 2022 Mar 4
               
               ' for comparison, comment out  dna
-              
+
+      .r.run dna    '' hue
+      .g.run dna      '' saturation
+      .b.run dna      '' value (hsv)
       .rad.run dna
       .a.run dna
-      .b.run dna      '' value (hsv)
-      .g.run dna      '' saturation
-      .r.run dna    '' hue
 ' ? "ii ";.b;" ";dna qc
      
       '' final adjustments
@@ -1276,8 +1275,7 @@ sub props_from( byref p as hdr_vars ptr)
       .slope /= .rad
       '.a = 1
      
-      'sCOL = type<v3>(.r/6, .g, .b) * (256 * 1.002) '' not entirely sure why less vibrant around 1.0
-      sCOL = hsv(.r, .g, .b) * (256 * 1.85) '' not entirely sure why less vibrant around 1.0
+      sCOL = hsv(.r, .g, .b) * (256 * 2.0) '' not entirely sure why less vibrant around 1.0
   end with
   aadot_nosq.xy01_ @hashed_props
 end sub
@@ -1470,6 +1468,7 @@ sub _find_header_best( byref progress as hdr_vars ptr)
 
   stream.bitpos = progress->bits_encoded
   g_pos_sub_exit = seed_hdr.f_possubexit( stream.bitpos)
+  
   frame += 1
 end sub
 
@@ -1487,7 +1486,7 @@ sub _scholastic( diagonal sng, byref progress as hdr_vars ptr, small_rad_exit in
     
     '? " schol" qc
     if small_rad_exit then
-      if hashed_props.rad < iif(aadot_nosq.b_dotstyle = dot_style.flat, 6, 2) then exit while
+      if hashed_props.rad < iif(aadot_nosq.b_dotstyle = dot_style.flat, 6.5, 4.2) then exit while
     EndIf
     
     gkey = inkey
@@ -1626,7 +1625,7 @@ chdir exepath
 
 #if 1
   
-  var data_size = 249
+  var data_size = 400
   encode filename, data_size, dot_style.flat '' flat, gradient
   'sleep 600
   line(0,0)-(w,h),rgb(99,88,77), bf
