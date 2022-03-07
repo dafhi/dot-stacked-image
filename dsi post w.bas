@@ -1,15 +1,14 @@
 '
 '  give this thing a .bmp !
 '
-var filename = "z.bmp"
+var filename = ".bmp"
 
 
-/' -- dot stacked image (lossy compression format) - 2022 Mar 6 - by dafhi
+/' -- dot stacked image (lossy compression format) - 2022 Mar 7 - by dafhi
 
-  v00 preview build - saved files compatibility not guaranteed
+  v00 preview build - saved files compatibility not guaranteed.
+  (tentative March 15 official release target)
  
-    known bug:  sometimes crashes.  usually w/ output size ~ 40 bytes
-
   note:  some cpu architectures run about 75% slower.  The bottleneck appears to
   happen in sRGBi.Cast.
  
@@ -22,9 +21,8 @@ var filename = "z.bmp"
   New architecture: chunks.  n-bit header + vari_bits_per_dot * cdots.
   
   benefits: streaming, better quality, experimentation platform
-  drawback: slower, complex
   
-  - March cumulative
+  - March cumulative updates
   
   dot: flat vs gradient
   sRGBi.dcol_sq -> delta_col (now uses sqr)
@@ -1090,16 +1088,13 @@ end prop
   
 #if 1
 const sng               radScale0 = .24
-const sng               radExpon = .415
+const sng               radExpon = .445
 const sng               radDetailRush = 0.18
 #elseif 0
-const sng               radScale0 = .24
-const sng               radExpon = .51
-const sng               radDetailRush = 0.22
 #else
 const sng               radScale0 = .24
-const sng               radExpon = .43
-const sng               radDetailRush = 0.21
+const sng               radExpon = .45
+const sng               radDetailRush = 0.185
 #endif
   
 
@@ -1153,7 +1148,7 @@ sub _cseedbits_calcs( byref p as hdr_vars ptr)
   g_hash_ini = stream.read( seed_hdr.cbits, pos_increment )
   c_seedbits = clamp( seed_hdr.f_cseedbits( g_hash_ini ), 14, -(seed_hdr.cbits = 0))
  
-  dim int dots_per = max( 6, frame ^ .5)
+  dim int dots_per = max( 16, frame ^ 1.25)
 
   '' tricky off-by-1 used by some loops
     pos_break = min( _
@@ -1631,7 +1626,7 @@ chdir exepath
 
 #if 1
   
-  var data_size = 1250
+  var data_size = 249
   encode filename, data_size, dot_style.flat '' flat, gradient
   'sleep 600
   line(0,0)-(w,h),rgb(99,88,77), bf
@@ -1648,50 +1643,3 @@ locate 1,1
 
 ? "data area: "; ubound(stream.bytes)+1; " bytes"
 sleep
-
-/'
-
-  ? " encode end"
-  ? "idot"; progress.idot
-  ? "bitpos"; stream.bitpos
-  ? "bits enc"; progress.bits_encoded
-  ? "pos oob"; stream.pos_oob
-  ? "hdr bits"; seed_hdr.cbits
-  ?:?
-
-performance vs price ratio.  in order:
-
-Blue Touch 3.4 20 - aquatic
-Game On 3.4 27 - warm, smooth (similar to Stronger With You)
-Woody Chestnut 1.7 29 - smoky brown sugar
-Run Wild 1.7 25 - fragrant, other-worldly
-Stronger With You 3.4 70 - bold, warm, smooth
-Wanted 3.4 40 - luxurious
-One Million Prive 3.4 45 - apple tart
-Escape 3.4 25 - kind, inviting
-Passion for Men 4.1 18 - warm spicy herbal
-This is Him 3.4 50 - sweet, outdoorsy
-Resala Arabian Oud 3.4 70 - luxurious
-CH Prive 3.4 90 - intriguing grassy
-Pegasus 4.2 190 - uplifting, beast mode
-Ristretto Intense Cafe 3.4 170 - latte, long lasting
-Dahab 3.4 250 - wow floral
-Triumph of Bacchus 3.4 250 - wow rum
-Tuxedo - light, fruity
-#elseif 0
-const sng               radScale0 = .22
-const sng               radExpon = .59
-const sng               radDetailRush = 0.27
-#elseif 0
-const sng               radScale0 = .14
-const sng               radExpon = .84
-const sng               radDetailRush = 0.41
-#elseif 0
-const sng               radScale0 = .14
-const sng               radExpon = .6
-const sng               radDetailRush = 0.2
-#elseif 0 '' flat
-const sng               radScale0 = .24
-const sng               radExpon = .585
-const sng               radDetailRush = 0.27
-'/
