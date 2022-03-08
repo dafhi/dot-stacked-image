@@ -4,9 +4,9 @@
 var filename = ".bmp"
 
 
-/' -- dot stacked image (lossy compression format) - 2022 Mar 7 - by dafhi
+/' -- dot stacked image (lossy compression format) - 2022 Mar 8 - by dafhi
 
-  v00 preview build - saved files compatibility not guaranteed.
+  preview build - saved files compatibility not guaranteed.
   (tentative March 15 official release target)
  
   note:  some cpu architectures run about 75% slower.  The bottleneck appears to
@@ -23,8 +23,8 @@ var filename = ".bmp"
   benefits: streaming, better quality, experimentation platform
   
   - March cumulative updates
-  
-  dot: flat vs gradient
+  March 8 - file Header udt precedes version-specific code
+  Mar. 7 - dot: flat vs gradient
   sRGBi.dcol_sq -> delta_col (now uses sqr)
   sRGBi.cast and delta_col to ulong fixes
   eigens ordering in imager.props_from
@@ -110,12 +110,78 @@ function clamp( in sng, hi sng = 1, lo sng = 0) sng
   return in + (in - hi) * (in > hi) + (in - lo) * (in < lo)
 End Function
 
-sub print_bytes(pp as ubyte ptr, u int)
+' --- (1 byte less in fileheader yay)
+type RGB24 field = 1
+  as ubyte          r,g,b
+  decl oper         cast ac ulong
+  decl oper         cast ac string '' 2021 Dec 30:  added
+end type
 
-for p as ubyte ptr = pp to @pp[u]
-  ? *p; " ";
- next 
-End Sub
+oper RGB24.cast ac ulong
+  return rgb(r,g,b)
+end oper
+
+oper RGB24.cast ac string
+  return str(r) + " " + str(g) + " " + str(b)
+end oper
+
+ 
+  namespace ns_fileheader '' 2022 March 8
+
+type verHeader field = 1    ' byte align
+  as string*28    dsiHeader ' defined in imager._define_verHeader
+end type
+
+type infoHeader field = 1 '' byte align
+  decl prop       w int
+  decl prop       h int
+  decl prop       w( int)
+  decl prop       h( int)
+ 
+  as RGB24        avgcol
+  as ushort       wm, hm
+end type
+
+prop infoHeader.w( param int)
+  wm = clamp(param, 65536, 1) - 1
+end prop
+
+prop infoHeader.h( param int)
+  hm = clamp(param, 65536, 1) - 1
+end prop
+
+prop infoHeader.w int
+  return wm + 1
+end prop
+
+prop infoHeader.h int
+  return hm + 1
+end prop
+
+function size int
+  return _
+    sizeof(verheader) + _
+    len(infoHeader)
+end function
+
+oper <>(l as verHeader, r as verHeader) int
+ 
+  dim int _err
+  dim as byte ptr a = @l.dsiHeader[0] '' 2021 Dec 31
+  dim as byte ptr b = @r.dsiHeader[0]
+ 
+  for i int = 0 to 12 '' full ver info and slightly into desc string
+    _err += a[i] <> b[i]
+  next
+  return _err <> 0
+ 
+end oper
+
+end namespace ' --- ns_fileHeader
+
+sub adjust_filename_dsi( byref filename as string )
+  filename = left(filename, len(filename) - 4) + ".dsi"
+end sub
 
 sub _copy_bytes(des() as byte, src() as byte, u int, l int)
   for i int = 0 to ubound(des)
@@ -172,7 +238,8 @@ const tau = 8 * atn(1)
 const pi = 4 * atn(1)
 
 
-'' debugger
+' -------- debugger -------------------
+'
 function strBin(p as any ptr, cBytes as longint = 1) as string
   var s = ""
   gp.a = p + cbytes - 1
@@ -184,9 +251,13 @@ function strBin(p as any ptr, cBytes as longint = 1) as string
   return s
 end function
 
+sub print_bytes(pp as ubyte ptr, u int)
+  for p as ubyte ptr = pp to @pp[u]
+    ? *p; " ";
+  next 
+End Sub
 
-' -------- debugger -------------------
-'
+
 'def dbg_subs
 
 '' follow a print statement w/ rand value to check section execution
@@ -301,20 +372,6 @@ sub imagevars.bmp_load( filename As String )  'modified official fb sample
 End sub
 
 ' ----------------------------------- more boiler..
-' --- (1 byte less in fileheader yay)
-type RGB24 field = 1
-  as ubyte          r,g,b
-  decl oper         cast ac ulong
-  decl oper         cast ac string '' 2021 Dec 30:  added
-end type
-
-oper RGB24.cast ac ulong
-  return rgb(r,g,b)
-end oper
-
-oper RGB24.cast ac string
-  return str(r) + " " + str(g) + " " + str(b)
-end oper
 
 type v3
   sng         x, y, z
@@ -943,63 +1000,6 @@ end sub
 
 end namespace
 
- 
-  namespace ns_fileheader
-
-type verHeader field = 1 '' byte align
-  as string *7    dsiHeader = "dsi v00"
-  as string *10   desc = "unofficial"
-end type
-
-type infoHeader field = 1 '' byte align
-  decl prop       w int
-  decl prop       h int
-  decl prop       w( int)
-  decl prop       h( int)
- 
-  as RGB24        avgcol
-  as ushort       wm, hm
-end type
-
-prop infoHeader.w( param int)
-  wm = clamp(param, 65536, 1) - 1
-end prop
-
-prop infoHeader.h( param int)
-  hm = clamp(param, 65536, 1) - 1
-end prop
-
-prop infoHeader.w int
-  return wm + 1
-end prop
-
-prop infoHeader.h int
-  return hm + 1
-end prop
-
-
-function size int
-  return _
-    sizeof(verheader) + _
-    len(infoHeader)
-end function
-
-
-oper <>(l as verHeader, r as verHeader) int
- 
-  dim int _err
-  dim as byte ptr a = @l.dsiHeader[0] '' 2021 Dec 31
-  dim as byte ptr b = @r.dsiHeader[0]
- 
-  for i int = 0 to 12 '' full ver info and slightly into desc string
-    _err += a[i] <> b[i]
-  next
-  return _err <> 0
- 
-end oper
-
-end namespace ' --- ns_fileHeader
-
 
 
 dim shared as ns_fileheader.verHeader  verheader
@@ -1086,10 +1086,13 @@ end prop
 ' ---------------
   
 #if 1
-const sng               radScale0 = .24
-const sng               radExpon = .425
-const sng               radDetailRush = 0.185
+const sng               radScale0 = .25
+const sng               radExpon = .42
+const sng               radDetailRush = 0.17
 #elseif 0
+const sng               radScale0 = .25
+const sng               radExpon = .38
+const sng               radDetailRush = 0.15
 #else
 const sng               radScale0 = .24
 const sng               radExpon = .45
@@ -1101,18 +1104,27 @@ const sng               radDetailRush = 0.185
 '
   namespace seed_hdr
   
-dim as byte     cbits = 2
-
-function max as short     '' 2022 March 5
-  return 2 ^ cbits - 1
-End Function
+const as byte     cbits = 2             '' independent
+                                        
+                                        '' dependent - 2022 March 7
+const as short    max   = 2 ^ cbits - 1
 
 
 function f_cseedbits( val as byte) as byte
-  return 8 '+ (val and max)
+  
+  /' - 2 variations during development
+  
+    _find_header_best loops through chunk variations from 0 to max,
+    so if cbits is 3 or more, it's wise to either:
+    - comment out + (val and max)
+    - leave the number at left 1 to 3 if + (val and max) stays
+  
+  '/
+  
+  return 5 + (val and max)
 end function
 
-function f_possubexit(bits_enc int) int
+function f_possubexit( bits_enc int) int
   swap bits_enc, stream.bitpos
   
   var pos_increment = 0
@@ -1147,7 +1159,7 @@ sub _cseedbits_calcs( byref p as hdr_vars ptr)
   g_hash_ini = stream.read( seed_hdr.cbits, pos_increment )
   c_seedbits = clamp( seed_hdr.f_cseedbits( g_hash_ini ), 14, -(seed_hdr.cbits = 0))
  
-  dim int dots_per = max( 16, frame ^ 1.25)
+  dim int dots_per = max( 16, frame ^ 1.35)
 
   '' tricky off-by-1 used by some loops
     pos_break = min( _
@@ -1159,11 +1171,6 @@ sub _cseedbits_calcs( byref p as hdr_vars ptr)
   seed_max = 2 ^ c_seedbits - 1
   
 '  ?"pos br idot br"; stream.bitpos; pos_break; p->idot; idot_break
-end sub
-
-
-sub adjust_filename_dsi( byref filename as string )
-  filename = left(filename, len(filename) - 4) + ".dsi"
 end sub
 
 
@@ -1204,14 +1211,6 @@ sub printstuff( byref p as hdr_vars ptr, title_msg as string = "", cond int = tr
 End Sub
 
 
-
-sub _fill_header
-  with infoheader
-  .w = imv_mid.w
-  .h = imv_mid.h
-  .avgcol = imv_mid.avg_col
-  end with
-end sub
 
 sub _sbuf_solidfill
   dim as any ptr  des = 0
@@ -1554,14 +1553,31 @@ sub encode( filename as string, byte_len int, _dotstyle int = dot_style.gradient
 '  sleep
 end sub
 
+sub _fill_infoHeader
+  with infoheader
+  .w = imv_mid.w
+  .h = imv_mid.h
+  .avgcol = imv_mid.avg_col
+  end with
+end sub
+
+sub _define_verHeader
+
+  verHeader.dsiHeader = "dsi v0 - we're Live baby!   "
+  
+  '' length 28
+
+end sub
 
 sub dsi_save(byval filename as string)
   if procview.h < 1 then exit sub
   adjust_filename_dsi filename
-  _fill_header
+  _define_verHeader
+  _fill_infoHeader
   var k = freefile
   open filename for binary access write as #k
-    put #k,, verHeader
+    put #k,, verHeader  ' -- compiler warning should be okay.
+                        ' _define_verHeader sets the string
     put #k,, infoHeader
     put #k,, stream.bytes()
   close #k
@@ -1578,16 +1594,25 @@ end sub
 
 sub dsi_load(byval filename as string)
   adjust_filename_dsi filename
-  var k = freefile
+  _define_verHeader
+  dim as typeof(verHeader)  vh
   
+  var k = freefile
   open filename for binary access read as #k
-    dim as typeof(verHeader)  vh
    
-    get #k,, verHeader
-    if verHeader <> vh then
-      ? "incompat. file version: "; verHeader.dsiHeader + verHeader.desc
-      close #k: exit sub
-    end if
+    get #k,, vh
+    
+    #if 0 ' enable for official or test
+          ' disable during dev (hyperparameters tweak, etc)
+    
+      if verHeader <> vh then
+        ? "possible compatibility issue."
+        ? "file version: "; verHeader.dsiHeader
+        sleep 2000
+        'close #k: exit sub
+      end if
+    
+    #endif
    
     var u = lof(k) - ns_fileheader.size - 1
     
@@ -1625,7 +1650,7 @@ chdir exepath
 
 #if 1
   
-  var data_size = 400
+  var data_size = 250
   encode filename, data_size, dot_style.flat '' flat, gradient
   'sleep 600
   line(0,0)-(w,h),rgb(99,88,77), bf
@@ -1638,7 +1663,6 @@ chdir exepath
 #endif
 
 decode
-locate 1,1
 
 ? "data area: "; ubound(stream.bytes)+1; " bytes"
 sleep
