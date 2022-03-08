@@ -23,7 +23,7 @@ var filename = ".bmp"
   benefits: streaming, better quality, experimentation platform
   
   - March cumulative updates
-  March 8 - file Header udt precedes version-specific code
+  March 8 - eigens order (sub _props_from), file Header udt precedes version-specific code
   Mar. 7 - dot: flat vs gradient
   sRGBi.dcol_sq -> delta_col (now uses sqr)
   sRGBi.cast and delta_col to ulong fixes
@@ -863,8 +863,8 @@ type t
   as nBitHashFloat    r = type(6, 0) '' hue sat val :p
   as nBitHashFloat    g = type(1, 0)
   as nBitHashFloat    b = type(1, 0)
-  as nBitHashFloat    a = type(1.0, 0.4) '' 
-  'as nBitHashFloat    a = type(2, 0.005) '' 
+  as nBitHashFloat    a = type(1.4, 0.7) '' 
+  'as nBitHashFloat    a = type(.7, 0.005) '' 
  
   decl prop           full ac ulong
  
@@ -1086,13 +1086,17 @@ end prop
 '
 ' ---------------
   
-#if 1
+#if 0
 const sng               radScale0 = .25
-const sng               radExpon = .365
+const sng               radExpon = .36
 const sng               radDetailRush = 0.155
 #elseif 0
 const sng               radScale0 = .25
-const sng               radExpon = .38
+const sng               radExpon = .36
+const sng               radDetailRush = 0.15
+#elseif 1
+const sng               radScale0 = .25
+const sng               radExpon = .36
 const sng               radDetailRush = 0.15
 #else
 const sng               radScale0 = .24
@@ -1105,7 +1109,7 @@ const sng               radDetailRush = 0.185
 '
   namespace seed_hdr
   
-const as byte     cbits = 1             '' independent
+const as byte     cbits = 3             '' independent
                                         
                                         '' dependent - 2022 March 7
 const as short    max   = 2 ^ cbits - 1
@@ -1122,7 +1126,7 @@ function f_cseedbits( val as byte) as byte
   
   '/
   
-  return 6 + (val and max)
+  return 1 + (val and max)
   
 end function
 
@@ -1161,7 +1165,7 @@ sub _cseedbits_calcs( byref p as hdr_vars ptr)
   g_hash_ini = stream.read( seed_hdr.cbits, pos_increment )
   c_seedbits = clamp( seed_hdr.f_cseedbits( g_hash_ini ), 14, -(seed_hdr.cbits = 0))
  
-  dim int dots_per = max( 16, frame ^ 1.35)
+  dim int dots_per = max( 5, frame ^ 1.35)
 
   '' tricky off-by-1 used by some loops
     pos_break = min( _
@@ -1252,7 +1256,6 @@ sub props_from( byref p as hdr_vars ptr)
                                      '' hash run once seed:  p->idot 
                                      '' a, b initializations:  g_hash, dna
      
-      .slope.run
       .y.run
       .x.run
               
@@ -1260,10 +1263,11 @@ sub props_from( byref p as hdr_vars ptr)
               
               ' for comparison, comment out  dna
 
+      .slope.run dna
+      .rad.run dna
       .r.run dna    '' hue
       .g.run dna      '' saturation
       .b.run dna      '' value (hsv)
-      .rad.run dna
       .a.run dna
 ' ? "ii ";.b;" ";dna qc
      
@@ -1342,10 +1346,7 @@ sub _decode( byref progress as hdr_vars ptr = 0)
   #endif
 end sub
 
-
-'
-'  encode
-'
+' ------------
 
 sub _calc_dot_bene( byref p as hdr_vars ptr)
   var error_nodot = AaDot_noSq.circ_err( @procview, @hashed_props )
@@ -1487,7 +1488,7 @@ sub _scholastic( diagonal sng, byref progress as hdr_vars ptr, small_rad_exit in
     
     '? " schol" qc
     if small_rad_exit then
-      if hashed_props.rad < iif(aadot_nosq.b_dotstyle = dot_style.flat, 6.5, 4.2) then exit while
+      if hashed_props.rad < iif(aadot_nosq.b_dotstyle = dot_style.flat, 5.5, 3.7) then exit while
     EndIf
     
     gkey = inkey
@@ -1651,7 +1652,7 @@ chdir exepath
 
 #if 1
   
-  var data_size = 250
+  var data_size = 350
   encode filename, data_size, dot_style.flat '' flat, gradient
   'sleep 600
   line(0,0)-(w,h),rgb(99,88,77), bf
