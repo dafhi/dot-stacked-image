@@ -23,7 +23,7 @@ var filename = ".bmp"
   benefits: streaming, better quality, experimentation platform
   
   - March cumulative updates
-  March 8 - file Header udt precedes version-specific code
+March 8 - hyperparameters, file Header udt precedes version-specific code
   Mar. 7 - dot: flat vs gradient
   sRGBi.dcol_sq -> delta_col (now uses sqr)
   sRGBi.cast and delta_col to ulong fixes
@@ -1038,15 +1038,16 @@ function read(cbits as byte, bitpos_inc as short) as short
   return (*gp.l shr b_offset) and mask
 end function
 
+dim int cbits   = 1
+dim int pos_advance
+
 sub flags_write
-  var cbits = 1
-  var pos_advance = 1
+  pos_advance = cbits
   write( aadot_nosq.b_dotstyle, cbits, pos_advance )
 end sub
 
 sub flags_read
-  var cbits = 1
-  var pos_advance = 1
+  pos_advance = cbits
   aadot_nosq.b_dotstyle = read( cbits, pos_advance )
 end sub
 
@@ -1087,8 +1088,8 @@ end prop
   
 #if 1
 const sng               radScale0 = .25
-const sng               radExpon = .42
-const sng               radDetailRush = 0.17
+const sng               radExpon = .38
+const sng               radDetailRush = 0.16
 #elseif 0
 const sng               radScale0 = .25
 const sng               radExpon = .38
@@ -1104,7 +1105,7 @@ const sng               radDetailRush = 0.185
 '
   namespace seed_hdr
   
-const as byte     cbits = 2             '' independent
+const as byte     cbits = 1             '' independent
                                         
                                         '' dependent - 2022 March 7
 const as short    max   = 2 ^ cbits - 1
@@ -1115,13 +1116,14 @@ function f_cseedbits( val as byte) as byte
   /' - 2 variations during development
   
     _find_header_best loops through chunk variations from 0 to max,
-    so if cbits is 3 or more, it's wise to either:
+    so if cbits is 4 or more, it's wise to either:
     - comment out + (val and max)
     - leave the number at left 1 to 3 if + (val and max) stays
   
   '/
   
-  return 5 + (val and max)
+  return 6 + (val and max)
+  
 end function
 
 function f_possubexit( bits_enc int) int
@@ -1650,7 +1652,7 @@ chdir exepath
 
 #if 1
   
-  var data_size = 250
+  var data_size = 450
   encode filename, data_size, dot_style.flat '' flat, gradient
   'sleep 600
   line(0,0)-(w,h),rgb(99,88,77), bf
