@@ -23,7 +23,7 @@ var filename = ".bmp"
   benefits: streaming, better quality, experimentation platform
   
   - March cumulative updates
-March 8 - hyperparameters, file Header udt precedes version-specific code
+  March 8 - file Header udt precedes version-specific code
   Mar. 7 - dot: flat vs gradient
   sRGBi.dcol_sq -> delta_col (now uses sqr)
   sRGBi.cast and delta_col to ulong fixes
@@ -129,7 +129,7 @@ end oper
   namespace ns_fileheader '' 2022 March 8
 
 type verHeader field = 1    ' byte align
-  as string*28    dsiHeader ' defined in imager._define_verHeader
+  as string*38    dsiHeader ' defined in imager._define_verHeader
 end type
 
 type infoHeader field = 1 '' byte align
@@ -1088,8 +1088,8 @@ end prop
   
 #if 1
 const sng               radScale0 = .25
-const sng               radExpon = .38
-const sng               radDetailRush = 0.16
+const sng               radExpon = .365
+const sng               radDetailRush = 0.155
 #elseif 0
 const sng               radScale0 = .25
 const sng               radExpon = .38
@@ -1565,9 +1565,8 @@ end sub
 
 sub _define_verHeader
 
-  verHeader.dsiHeader = "dsi v0 - we're Live baby!   "
-  
-  '' length 28
+  verHeader.dsiHeader = "dsi v0 - pygmi - we're Live baby!     "
+  ' -- length (38)      " - - - - - - - - - - - - - - - - - - -"
 
 end sub
 
@@ -1652,7 +1651,7 @@ chdir exepath
 
 #if 1
   
-  var data_size = 450
+  var data_size = 250
   encode filename, data_size, dot_style.flat '' flat, gradient
   'sleep 600
   line(0,0)-(w,h),rgb(99,88,77), bf
