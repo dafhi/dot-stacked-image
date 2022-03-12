@@ -4,11 +4,14 @@
 var filename = ".bmp"
 
 
-/' -- dot stacked image (lossy compression format) - 2022 Mar 8 - by dafhi
+/' -- dot stacked image (lossy compression format) - 2022 Mar 11 - by dafhi
 
   preview build - saved files compatibility not guaranteed.
-  (tentative March 15 official release target)
  
+  New architecture: chunks.  n-bit header + vari_bits_per_dot * cdots.
+  
+  benefits: streaming, better quality, experimentation platform
+  
   note:  some cpu architectures run about 75% slower.  The bottleneck appears to
   happen in sRGBi.Cast.
  
@@ -18,16 +21,18 @@ var filename = ".bmp"
     updates
    ---------
   
-  New architecture: chunks.  n-bit header + vari_bits_per_dot * cdots.
+  March cumulative -
   
-  benefits: streaming, better quality, experimentation platform
+  March 11 - "official" detection
+  March 10 - experiment:
+    combined flat & gradient dot styles into one encode
+  2 different encode styles.  one might be fast, other might look artsy.
   
-  - March cumulative updates
   March 8 - eigens order (sub _props_from), file Header udt precedes version-specific code
   Mar. 7 - dot: flat vs gradient
   sRGBi.dcol_sq -> delta_col (now uses sqr)
   sRGBi.cast and delta_col to ulong fixes
-  eigens ordering in imager.props_from
+  eigens ordering in dsi_imager.props_from
   2. hash more responsive to small seed
   1. improved eigenvectors foundation
  
@@ -128,8 +133,8 @@ end oper
  
   namespace ns_fileheader '' 2022 March 8
 
-type verHeader field = 1    ' byte align
-  as string*38    dsiHeader ' defined in imager._define_verHeader
+type dsiHeader field = 1    ' byte align
+  as string*38    mesg
 end type
 
 type infoHeader field = 1 '' byte align
@@ -160,17 +165,17 @@ end prop
 
 function size int
   return _
-    sizeof(verheader) + _
+    sizeof(dsiHeader) + _
     len(infoHeader)
 end function
 
-oper <>(l as verHeader, r as verHeader) int
+oper <>(l as dsiHeader, r as dsiHeader) int
  
   dim int _err
-  dim as byte ptr a = @l.dsiHeader[0] '' 2021 Dec 31
-  dim as byte ptr b = @r.dsiHeader[0]
+  dim as byte ptr a = @l.mesg[0] '' 2021 Dec 31
+  dim as byte ptr b = @r.mesg[0]
  
-  for i int = 0 to 12 '' full ver info and slightly into desc string
+  for i int = 0 to len(dsiHeader)-1
     _err += a[i] <> b[i]
   next
   return _err <> 0
@@ -261,8 +266,8 @@ End Sub
 'def dbg_subs
 
 '' follow a print statement w/ rand value to check section execution
-def qc  ; rnd; " "
-def qq  sbuf_show: sleep 450
+def qc  ; rnd; " "; klkl
+def qq  sbuf_show:? stream.bitpos
 dim shared int gmode
 '
  ' --------- debugger -------------
@@ -615,7 +620,7 @@ type sRGBi_buf
   decl prop         hm int
  
   decl sub          resize( int, int)
-  decl sub          fill( byref as imagevars ptr = 0, byval as v3 = type(0,0,0), sng = 1, int = 0)
+  decl sub          fill( byval as v3 = type(0,0,0), sng = 1, int = 0,  byref as imagevars ptr = 0)
   decl sub          view( int=0, int=0, as any ptr = 0)
  
   as sRGBi          mydata(any, any) '' 2022 Jan 2 [old: data(any, any)
@@ -646,7 +651,7 @@ sub sRGBi_buf.clip_calc( p as imagevars ptr, x int, y int, byref prc as Rect1 pt
   prc->y1 = y + hm: prc->y1 += (prc->y1 - p->hm) * (prc->y1 > p->hm)
 end sub
 
-sub sRGBi_buf.fill( byref p_imvsrc as imagevars ptr, byval _col as v3, stren sng, mode int )
+sub sRGBi_buf.fill( byval _col as v3, stren sng, mode int,  byref p_imvsrc as imagevars ptr )
  
   if hm < 1 then exit sub '' 2022 Mar 4
   
@@ -763,6 +768,10 @@ End Function
  
   namespace dsi_hash '' RNG
 
+  /' -- changing the hash will break compatability.
+  
+  '/
+
 type statelit as ulong
 
 dim as statelit a, b
@@ -782,20 +791,11 @@ end sub
 
 function valu( i as ulongint = 0) as statelit '' integer
   
-  #if 1
-   
-   '' 2022 Mar 2
-   
-    b += ((a+i) * mulc) shr 1
-    rotr b, 16
-    a xor= 1 + b
-  
-  #else  '' old
-    
-    b += (a xor i)
-    a += (b * mulc) shr 1
-  
-  #EndIf
+ '' 2022 Mar 2
+ 
+  b += ((a+i) * mulc) shr 1
+  rotr b, 16
+  a xor= 1 + b
   
   return a
 End function
@@ -856,6 +856,7 @@ type t
  
   decl sub            ini_( int = 0, as dsi_hash.statelit = 0, as dsi_hash.statelit = 0)
 
+  as nBitHashFloat    style = type(1, 0)
   as nBitHashFloat    slope = type(1, .5)
   as nBitHashFloat    rad = type(1, 0)
   as nBitHashFloat    x = type(1, 0)
@@ -863,8 +864,8 @@ type t
   as nBitHashFloat    r = type(6, 0) '' hue sat val :p
   as nBitHashFloat    g = type(1, 0)
   as nBitHashFloat    b = type(1, 0)
-  as nBitHashFloat    a = type(1.4, 0.7) '' 
-  'as nBitHashFloat    a = type(.7, 0.005) '' 
+  'as nBitHashFloat    a = type(1.4, 0.7) '' 
+  as nBitHashFloat    a = type(.8, 0.15) '' 
  
   decl prop           full ac ulong
  
@@ -893,12 +894,6 @@ end namespace
 
  /' -- anti-aliased rendering primitive -- '/
 
-enum dot_style
-  gradient
-  flat
-End Enum
-
-  
   namespace AaDot_noSq
 
 dim as sRGBi_buf ptr  pTarget
@@ -942,11 +937,17 @@ function circ_err( byref pv as proc_view ptr, byref p as ns_ecs.t ptr ) dbl
       endif
       dx += p->slope:  next
     dy += p->slope:  next
-  'return (sum+1.5) / (cPels+1.5) ^ .1
+  'return (sum+.5) / (cPels+.5) ^ .1
   return sum
 end function
 
-dim int b_dotstyle
+'dim int b_dotstyle
+enum dot_style
+  gradient
+  flat
+End Enum
+
+  
 
 sub _render( byref p as ns_ecs.t ptr, byval col as sRGBi)
  
@@ -958,8 +959,10 @@ sub _render( byref p as ns_ecs.t ptr, byval col as sRGBi)
   static sng a
 
   col.sum *= col.iter
-  
-  select case ac b_dotstyle '' ac = as const
+  dim int j = p->style
+  '? j: sleep 500
+  select case ac j '' ac = as const
+  'select case ac b_dotstyle '' ac = as const
   
   case dot_style.gradient
     for y int = rc.Y0 to rc.Y1
@@ -1002,19 +1005,14 @@ end namespace
 
 
 
-dim shared as ns_fileheader.verHeader  verheader
+'dim shared as ns_fileheader.verHeader  verheader
 dim shared as ns_fileheader.infoHeader infoHeader
 
 
-/'
-  - 2022 Jan 15 -
-  created & moved some stuff from imager namespace
-'/
   namespace stream
 
-dim int         bitpos, pos_oob
+dim as long     bitpos, pos_oob
 dim as ubyte    bytes()
-
 
 dim int         b_offset
 dim as ulong    mask
@@ -1030,120 +1028,215 @@ end sub
 sub write(valu as short, cbits as byte, bitpos_inc as short)
   _stream_common cbits, bitpos_inc
   *gp.l and= -1 xor (mask shl b_offset) '' 4 byte int ptr
-  *gp.l or= valu shl b_offset
+  *gp.l or= (valu and mask) shl b_offset
 end sub
 
-function read(cbits as byte, bitpos_inc as short) as short
+function read( cbits as byte, bitpos_inc as short) as short
   _stream_common cbits, bitpos_inc
   return (*gp.l shr b_offset) and mask
 end function
-
-dim int cbits   = 1
-dim int pos_advance
+  
+  dim int flag_official   '' official version flag in saved image
+  dim int c_flagbits = 1  '' currently only 1 flag
 
 sub flags_write
-  pos_advance = cbits
-  write( aadot_nosq.b_dotstyle, cbits, pos_advance )
+  var pos_advance = c_flagbits
+  write( flag_official, c_flagbits, pos_advance )
 end sub
 
 sub flags_read
-  pos_advance = cbits
-  aadot_nosq.b_dotstyle = read( cbits, pos_advance )
+  var pos_advance = c_flagbits
+  flag_official = read( c_flagbits, pos_advance )
 end sub
 
 end namespace ' --- stream
 
 
 
-/'
-  expunged from dsi_imager to textually group hyperparameters.
-  hypers i adjust manually during testing.
+type t_hyper_parameters field = 1 '' byte align
+  sng       radScale0
+  sng       radDecay
+  sng       radDetailRush
+  sng       expon_dotsper
+  as byte   base_dotsper
+  as byte   hdr_cbits
+  as byte   hdr_fcbits_base
+  as byte   hdr_fcbits_extend
+  as string * len(ns_fileheader.dsiHeader)  verHeader
+End Type
+
+dim shared as t_hyper_parameters _
+  g_hypers_experim
+
+oper = (l as t_hyper_parameters, r as t_hyper_parameters) int
+  dim as any ptr pal = @l, par = @r
+  dim as byte ptr pbl = pal, pbr = par
+  static int diff
+  for i int = 0 to len(t_hyper_parameters)-1
+    diff += abs(pbl[i] - pbr[i])
+  next  
+  return diff = 0
+end oper
+
+
+  namespace seed_hdr
   
-    hyperparameters
-  radScale0, radExpon, radDetailRush
-  seed_hdr .cbits, f_cseedbits()
-  dsi_imager._cseedbits_calcs() and props_from()
-'/
+dim as short    _max
+
+function f_cseedbits( byref p_hypers as t_hyper_parameters ptr, val as byte) as byte
+  return p_hypers->hdr_fcbits_base - p_hypers->hdr_fcbits_extend * (val and _max)
+end function
+
+function f_possubexit( byref p_hypers as t_hyper_parameters ptr, bits_enc as ulong) int
+  swap bits_enc, stream.bitpos
+  
+  var pos_increment = 0
+  var stream_read = stream.read( p_hypers->hdr_cbits, pos_increment )
+  var c_seed = f_cseedbits( p_hypers, stream_read )
+  swap bits_enc, stream.bitpos
+  
+  return stream.pos_oob + 1 - p_hypers->hdr_cbits - c_seed '' love off-by-1's  >.<
+End Function
+
+sub setmax( hdr_cbits int)
+  _max = 2 ^ hdr_cbits - 1
+End Sub
+
+end namespace
+  
 
 type hdr_vars
+  decl csr      (byref as t_hyper_parameters ptr = 0)
   as byte       dot_seed
   int           idot
   int           bits_encoded
   int           dots_encoded
   dbl           bene
+  
+  as t_hyper_parameters ptr _
+    p_hypers
 end type
 
-' ----- experimental
-'
-type Eigen field = 1 '' byte align
-  decl prop mask as short
-  as byte   c
-end type
-
-prop Eigen.mask as short
-  return 2 ^ c - 1
-end prop
-'
-' ---------------
-  
-#if 0
-const sng               radScale0 = .25
-const sng               radExpon = .36
-const sng               radDetailRush = 0.155
-#elseif 0
-const sng               radScale0 = .25
-const sng               radExpon = .36
-const sng               radDetailRush = 0.15
-#elseif 1
-const sng               radScale0 = .25
-const sng               radExpon = .36
-const sng               radDetailRush = 0.15
-#else
-const sng               radScale0 = .24
-const sng               radExpon = .45
-const sng               radDetailRush = 0.185
-#endif
-  
-
-'
-'
-  namespace seed_hdr
-  
-const as byte     cbits = 3             '' independent
-                                        
-                                        '' dependent - 2022 March 7
-const as short    max   = 2 ^ cbits - 1
+csr hdr_vars(byref p as t_hyper_parameters ptr)
+  p_hypers = p
+end csr
 
 
-function f_cseedbits( val as byte) as byte
   
-  /' - 2 variations during development
+  namespace ns_compat
+    
+/' -- "official" detection --
+ 
+    intent:
+  1. groups hyperparameters for easy experimentation.
+  2. coder forgetfulness warning & write prevention
   
-    _find_header_best loops through chunk variations from 0 to max,
-    so if cbits is 4 or more, it's wise to either:
-    - comment out + (val and max)
-    - leave the number at left 1 to 3 if + (val and max) stays
-  
-  '/
-  
-  return 1 + (val and max)
-  
-end function
+  if comparison subs (work_branch & master) don't match,
+  "official" flag will be set to 0.
 
-function f_possubexit( bits_enc int) int
-  swap bits_enc, stream.bitpos
-  
-  var pos_increment = 0
-  var c_seed = f_cseedbits(stream.read( seed_hdr.cbits, pos_increment ))
-  
-  swap bits_enc, stream.bitpos
+'/
 
-  '' off-by-1's  >.<
-  return stream.pos_oob + 1 - cbits - c_seed
+  function work_branch as t_hyper_parameters ptr
+    static as t_hyper_parameters hypers
+
+/' -- sub for experimentation '/
+  
+  hypers.radScale0 = .14
+  hypers.radDecay = .48
+  hypers.radDetailRush = .15
+
+  hypers.hdr_cbits = 1
+  hypers.hdr_fcbits_base = 7
+  hypers.hdr_fcbits_extend = 1
+
+  hypers.base_dotsper = 30
+  hypers.expon_dotsper = .4
+
+  hypers.verHeader = "dsi v00.0-                            "
+  ' -- length (38)   " - - - - - - - - - - - - - - - - - - -"
+
+  seed_hdr.setmax hypers.hdr_cbits
+
+  '' prior to official format release,
+  '' change master values (below) to match.
+
+  return @hypers
+End function
+
+  
+  function master as t_hyper_parameters ptr
+    static as t_hyper_parameters hypers
+
+/'
+  -- Do you mean to adjust work values?
+  -- You probably do.
+ 
+  written file values are
+'/
+
+hypers.radScale0 = .14
+hypers.radDecay = .49
+hypers.radDetailRush = .15
+
+hypers.hdr_cbits = 1
+hypers.hdr_fcbits_base = 7
+hypers.hdr_fcbits_extend = 1
+
+hypers.base_dotsper = 30
+hypers.expon_dotsper = .4
+  
+hypers.verHeader = "dsi v00.0 (unofficial)                "
+' -- length (38)   " - - - - - - - - - - - - - - - - - - -"
+
+return @hypers
+End function
+
+  /' -- expected hash algorithm -- '/
+
+dim as dsi_hash.statelit a, b
+
+dim as ulongint mulC = &b10000000001000000001000000010000001000001000010001001011
+
+sub _rotr(byref q as dsi_hash.statelit, amount as byte)
+  q = (q shl (dsi_hash.lenx8 - amount)) or (q shr amount)
+End Sub
+
+function _valu( i as ulongint = 0) as dsi_hash.statelit '' integer
+  b += ((a+i) * mulc) shr 1
+  _rotr b, 16
+  a xor= 1 + b
+  return a
+End function
+
+function _ini( i as ulongint = 0, val_a as dsi_hash.statelit = 0, val_b as dsi_hash.statelit = 0) as dsi_hash.statelit
+  a = val_a
+  b = val_b
+  return _valu(i)
+End function
+
+function _RNGs_equal int
+  for i int = 0 to 1
+    var a = rnd * culng(-1)
+    var b = rnd * culng(-1)
+    if _ini(i, a, b) <> dsi_hash.ini(i, a, b) then return false
+  next
+  return true
 End Function
 
-end namespace
+sub compute__flag_official
+  stream.flag_official = _RNGs_equal and (*master = *work_branch)
+End Sub
   
+  dim as hdr_vars   ghvars
+
+sub ghvars_from_official
+  ghvars = type(master)
+end sub
+
+const as string str_flag0_bytes = "flag: 0"
+
+end namespace
+
   
 '
 '
@@ -1160,12 +1253,15 @@ dim int         idot_break
 dim int         frame
 
 sub _cseedbits_calcs( byref p as hdr_vars ptr)
+  
 '  ? " cseedbits_calcs";
-  var pos_increment = seed_hdr.cbits
-  g_hash_ini = stream.read( seed_hdr.cbits, pos_increment )
-  c_seedbits = clamp( seed_hdr.f_cseedbits( g_hash_ini ), 14, -(seed_hdr.cbits = 0))
+  var pos_increment = p->p_hypers->hdr_cbits
+  g_hash_ini = stream.read( p->p_hypers->hdr_cbits, pos_increment )
+  c_seedbits = clamp( seed_hdr.f_cseedbits( p->p_hypers, g_hash_ini ), 14, -(p->p_hypers->hdr_cbits = 0))
  
-  dim int dots_per = max( 5, frame ^ 1.35)
+    dim int dots_per = max( _
+  p->p_hypers->base_dotsper, _
+  frame ^ p->p_hypers->expon_dotsper)
 
   '' tricky off-by-1 used by some loops
     pos_break = min( _
@@ -1182,7 +1278,6 @@ end sub
 
 
 dim as im_downscaler    imv_source
-
 dim as im_downscaler    imv_mid
 
 sub _bmpload_and_downscale( filename as string, scale_amount sng = 0.4 )
@@ -1197,7 +1292,7 @@ dim as proc_view procview
 
 
 sub sbuf_show( y int = 0, x int = 0, str_mesg as string = "")
-  procview.sbuf.view 190, 10
+  procview.sbuf.view 240, 50
   if y > 0 or x > 0  then
     locate y, x
     ? str_mesg
@@ -1209,9 +1304,9 @@ sub printstuff( byref p as hdr_vars ptr, title_msg as string = "", cond int = tr
   if cond then
     sbuf_show
     ? title_msg
-    ? "bene "; p->bene qc
-    ? "idot, break"; p->idot; idot_break qc
-    ? "pos, enc, break"; stream.bitpos; p->bits_encoded; g_pos_sub_exit qc
+'    ? "bene "; p->bene qc
+'    ? "idot, break"; p->idot; idot_break qc
+'    ? "pos, enc, break"; stream.bitpos; p->bits_encoded; g_pos_sub_exit qc
     if paus then sleep
   endif
 End Sub
@@ -1219,19 +1314,18 @@ End Sub
 
 
 sub _sbuf_solidfill
-  dim as any ptr  des = 0
   var             stren = 1.0
-  procview.sbuf.fill des, infoHeader.avgcol, stren, fill_mode.solid
+  procview.sbuf.fill infoHeader.avgcol, stren, fill_mode.solid'
 end sub
  
 
 dim sng                 gRadMul
 
-sub _workbuf_fullsize
+sub _workbuf_fullsize( byref p_hypers as t_hyper_parameters ptr)
   var scalar = 1
   procview.work_scale @imv_mid, scalar
   aadot_nosq.render_target @procview.sbuf
-  gRadMul = radScale0 * procview.src.diagonal
+  gRadMul = p_hypers->radScale0 * procview.src.diagonal
 end sub
 
  
@@ -1258,21 +1352,24 @@ sub props_from( byref p as hdr_vars ptr)
      
       .y.run
       .x.run
+      .slope.run 'dna
               
               ' eigenvectors.  order is important - 2022 Mar 4
               
               ' for comparison, comment out  dna
 
-      .slope.run dna
+      
       .rad.run dna
       .r.run dna    '' hue
       .g.run dna      '' saturation
       .b.run dna      '' value (hsv)
+      .style.run dna
       .a.run dna
 ' ? "ii ";.b;" ";dna qc
      
       '' final adjustments
-      .rad = gRadMul * (.5 + .5 * .rad) * radExpon ^ (p->idot ^ radDetailRush)
+      .rad = gRadMul * (.5 + .5 * .rad) * _
+        p->p_hypers->radDecay ^ (p->idot ^ p->p_hypers->radDetailRush)
       .x *= procview.src.w
       .y *= procview.src.h
       '.slope = iif(p->idot < 200,.5,_
@@ -1301,7 +1398,10 @@ end sub
 sub _decode_chunk( byref p as hdr_vars ptr)
  
   _cseedbits_calcs p
-
+ /' 
+? "dec chunk" qc
+    qq; p->bits_encoded qc
+sleep'/
   while stream.bitpos < pos_break andalso p->idot < idot_break
     _dot_decode p, stream.read( c_seedbits, c_seedbits )
     p->idot += 1
@@ -1317,8 +1417,6 @@ sub _decode_chunk( byref p as hdr_vars ptr)
   #endif
 end sub
 
-dim as hdr_vars   ghvars
-
 
 sub _decode( byref progress as hdr_vars ptr = 0)
   'qpp " _deco"
@@ -1326,17 +1424,16 @@ sub _decode( byref progress as hdr_vars ptr = 0)
 
   _sbuf_solidfill
   
-  if progress = 0 then progress = @ghvars
+  if progress = 0 then progress = @ns_compat.ghvars
   progress->idot = 0
   frame = 0
-  stream.bitpos = 0
-  stream.flags_read
-  
+  stream.bitpos = stream.c_flagbits
+  '? stream.bitpos
   while stream.bitpos < progress->bits_encoded
     _decode_chunk progress
     frame += 1
   wend
-  
+
   #if 0 '' debugger
   if gmode=2 then
     sbuf_show
@@ -1383,38 +1480,50 @@ sub _best_dot( byref p as hdr_vars ptr)
     var dot = _dot_result( p, dna )
     if dot.bene > dot_best.bene then dot_best = dot
   next
+
   *p = dot_best
 end sub
 
-sub _encode_dots( byref p as hdr_vars ptr )
+sub _encode_dots( byref p as hdr_vars ptr, hdr_val as byte )
+  '? " enc dots"
+  var pos0 = stream.bitpos
+  
+  var advance_amount = 0 '' stresm.bitpos advances in _cseedbits_calcs from stream.read() call
+  stream.write hdr_val, p->p_hypers->hdr_cbits, advance_amount
+  
+  'qq; p->bits_encoded qc
+  _cseedbits_calcs p
+  'qq; " -" qc
   
   dim dbl sum_bene
-
-  var pos0 = stream.bitpos
-  _cseedbits_calcs p
   
+  '? "c seedbits "; c_seedbits qc
+  '? "pos break"; pos_break qc
   while stream.bitpos < pos_break andalso p->idot < idot_break
     _best_dot p
     sum_bene += p->bene
     
     var advance_amount = 0
     stream.write p->dot_seed, c_seedbits, advance_amount
-    
+    'qq; p->bits_encoded qc
     advance_amount = c_seedbits
     var dot_seed = stream.read( c_seedbits, advance_amount)
-    
+
     _dot_decode p, dot_seed
     '? p->idot;
     p->idot += 1
   wend
+
   p->bits_encoded = stream.bitpos
   p->dots_encoded = p->idot
   p->bene = sum_bene / (stream.bitpos - pos0)
   
   /'
-  var paus = true
-  ? "pos, pos0"; stream.bitpos; pos0 qc
-  printstuff p, " encdots", gmode, paus
+  'var paus = true
+    '? p->idot; idot_break qc
+    qq
+    sleep
+  'printstuff p, " encdots", gmode, paus
   '/
 End Sub
 
@@ -1427,21 +1536,21 @@ function _encode_chunk(byref progress as hdr_vars ptr, hdr_val as byte) as hdr_v
   stream.bitpos = result.bits_encoded
   _decode @result
   
-  var advance_amount = 0
-  stream.write hdr_val, seed_hdr.cbits, advance_amount
+'  var advance_amount = 0
+'  stream.write hdr_val, seed_hdr.cbits, advance_amount
   
-  _encode_dots @result
-  byPos1 = stream.bitpos*8
-  'byPos1 = max(stream.bitpos*8, bypos1)
+  _encode_dots @result, hdr_val
+  byPos1 = stream.bitpos\8
+
   return @result
 end function
 
 sub _find_header_best( byref progress as hdr_vars ptr)
   if progress->bits_encoded >= g_pos_sub_exit then exit sub
-  var header_val = 0
-  var byPos0 = stream.bitpos * 8
   
   bypos1 = 0
+  var byPos0 = stream.bitpos \ 8
+  var header_val = 0
   var hvars_best = *_encode_chunk( progress, header_val)
   
   ' -- copy generated dna (stored as bytes)
@@ -1449,17 +1558,16 @@ sub _find_header_best( byref progress as hdr_vars ptr)
 
   var byPos1_best = byPos1
   
-  for header_val = 1 to seed_hdr.max
+  for header_val = 1 to seed_hdr._max
     
     var result = _encode_chunk( progress, header_val)
     if result->bene > hvars_best.bene then
       
       hvars_best = *result
-
-      ' -- copy new generated dna
-      _copy_bytes dna_best(), stream.bytes(), bypos0, bypos1
-
       bypos1_best = bypos1
+
+      ' -- copy new dna
+      _copy_bytes dna_best(), stream.bytes(), bypos0, bypos1
     endif
   next
   
@@ -1469,35 +1577,33 @@ sub _find_header_best( byref progress as hdr_vars ptr)
   _copy_bytes stream.bytes(), dna_best(), bypos0, bypos1_best
 
   stream.bitpos = progress->bits_encoded
-  g_pos_sub_exit = seed_hdr.f_possubexit( stream.bitpos)
+  g_pos_sub_exit = seed_hdr.f_possubexit( progress->p_hypers, stream.bitpos)
   
   frame += 1
 end sub
 
-dim as string gkey
+
+dim as string g_key
 
 sub _scholastic( diagonal sng, byref progress as hdr_vars ptr, small_rad_exit int = true)  
   procview.work_scale @imv_mid, diagonal / imv_mid.diagonal
   aadot_nosq.render_target @procview.sbuf
-  gRadMul = radScale0 * procview.src.diagonal
+  gRadMul = progress->p_hypers->radScale0 * procview.src.diagonal
 
-  stream.flags_write
-  
   while ( progress->bits_encoded < g_pos_sub_exit)
     _find_header_best progress
-    
     '? " schol" qc
     if small_rad_exit then
-      if hashed_props.rad < iif(aadot_nosq.b_dotstyle = dot_style.flat, 5.5, 3.7) then exit while
+      if hashed_props.rad < 5.8 then exit while
     EndIf
     
-    gkey = inkey
-    if gkey <> "" then exit sub
+    g_key = inkey
+    if g_key <> "" then exit sub
     
     #if 1
      t = timer
     if t > tTriggerF + .5 then
-      sbuf_show 20, 2, "bytes left: "+ str(ubound(stream.bytes)+1 - ((stream.bitpos \ 8) + 1)) + " "
+      sbuf_show 20, 2, "bytes left: "+ str(ubound(stream.bytes)+1 - ((stream.bitpos \ 8))) + " "
       tTriggerF = t
       'sleep 30
     endif
@@ -1507,8 +1613,7 @@ sub _scholastic( diagonal sng, byref progress as hdr_vars ptr, small_rad_exit in
   '? " schol end"
 end sub
 
-
-sub encode( filename as string, byte_len int, _dotstyle int = dot_style.gradient)
+sub encode( filename as string, byte_len int )
   
   ' ---- setup -----------
   '
@@ -1522,7 +1627,15 @@ sub encode( filename as string, byte_len int, _dotstyle int = dot_style.gradient
 
   stream.pos_oob = ( u+1) * 8
   g_pos_sub_exit = stream.pos_oob
-  aadot_nosq.b_dotstyle = _dotstyle
+ 
+  dim as hdr_vars _
+    progress = type(ns_compat.work_branch)
+  
+  ns_compat.compute__flag_official
+  if stream.flag_official = false then ? ns_compat.str_flag0_bytes
+
+  stream.bitpos = 0
+  stream.flags_write
   
   t = timer:  tTriggerF = t - 10
   '
@@ -1530,14 +1643,14 @@ sub encode( filename as string, byte_len int, _dotstyle int = dot_style.gradient
   
   '  _scholastic is where the magic begins
   '
-  dim as hdr_vars  progress
+  progress.bits_encoded = stream.bitpos
   var diagonal = 60
   
-  'gmode = 1
+  'gmode = 1 '' debugger
   _scholastic diagonal, @progress
   '
   while (diagonal < imv_source.diagonal - 70) andalso stream.bitpos < g_pos_sub_exit
-    if gkey <> "" then exit sub
+    if g_key <> "" then exit sub
     diagonal += 35
     _scholastic diagonal, @progress
   wend
@@ -1547,13 +1660,14 @@ sub encode( filename as string, byte_len int, _dotstyle int = dot_style.gradient
   _scholastic imv_source.diagonal, @progress, b_small_rad_exit
   
   'sleep 
-  _workbuf_fullsize
-  ghvars = progress
-' gmode = 2
+  _workbuf_fullsize progress.p_hypers
+  ns_compat.ghvars = progress
   
+' gmode = 2
+'  ? u
 '  print_bytes @stream.bytes(0), u
-'  sbuf_show 20, 2, "bytes left: 0  "
-'  sleep
+  sbuf_show 20, 2, "bytes left: 0  "
+
 end sub
 
 sub _fill_infoHeader
@@ -1564,53 +1678,52 @@ sub _fill_infoHeader
   end with
 end sub
 
-sub _define_verHeader
-
-  verHeader.dsiHeader = "dsi v0 - pygmi - we're Live baby!     "
-  ' -- length (38)      " - - - - - - - - - - - - - - - - - - -"
-
-end sub
-
 sub dsi_save(byval filename as string)
   if procview.h < 1 then exit sub
   adjust_filename_dsi filename
-  _define_verHeader
+  '_define_verHeader
   _fill_infoHeader
   var k = freefile
   open filename for binary access write as #k
-    put #k,, verHeader  ' -- compiler warning should be okay.
+    put #k,, ns_compat.ghvars.p_hypers->verHeader  ' -- compiler warning should be okay.
                         ' _define_verHeader sets the string
     put #k,, infoHeader
     put #k,, stream.bytes()
   close #k
 end sub
 
-
-
 sub decode( show int = true)
-'  gmode=1 '' debugger
-  _decode 'p
+  ns_compat.compute__flag_official
+  if stream.flag_official = false then ?:? "code: unofficial build"
+  
+  stream.bitpos = 0
+  stream.flags_read
+  
+  _decode
   if show then sbuf_show
+ 
+  if stream.flag_official = false then ? ns_compat.str_flag0_bytes
 end sub
 
 
 sub dsi_load(byval filename as string)
   adjust_filename_dsi filename
-  _define_verHeader
-  dim as typeof(verHeader)  vh
+  ns_compat.ghvars_from_official
+  
+  dim as typeof(ns_compat.ghvars.p_hypers->verHeader)  vh
   
   var k = freefile
   open filename for binary access read as #k
    
     get #k,, vh
     
-    #if 0 ' enable for official or test
+    #if 1 ' enable for official or debug
           ' disable during dev (hyperparameters tweak, etc)
     
-      if verHeader <> vh then
-        ? "possible compatibility issue."
-        ? "file version: "; verHeader.dsiHeader
-        sleep 2000
+      if ns_compat.ghvars.p_hypers->verHeader <> vh then
+        ? "possible compatibility issue"
+        ? "file version: "; vh'.dsiHeader
+        'sleep 2000
         'close #k: exit sub
       end if
     
@@ -1626,10 +1739,11 @@ sub dsi_load(byval filename as string)
   
   imv_mid.create infoHeader.w, infoHeader.h
 
-  _workbuf_fullsize
+  ns_compat.ghvars = type(ns_compat.work_branch)
+  _workbuf_fullsize ns_compat.ghvars.p_hypers
   stream.pos_oob = (u+1)*8
-  ghvars.bits_encoded = stream.pos_oob
-
+  ns_compat.ghvars.bits_encoded = stream.pos_oob
+  
 end sub
 
 end namespace
@@ -1653,8 +1767,10 @@ chdir exepath
 #if 1
   
   var data_size = 350
-  encode filename, data_size, dot_style.flat '' flat, gradient
-  'sleep 600
+ 
+  encode filename, data_size
+  
+  '' "encode finished" cue 
   line(0,0)-(w,h),rgb(99,88,77), bf
   
   '' This works
@@ -1665,6 +1781,6 @@ chdir exepath
 #endif
 
 decode
-
+?
 ? "data area: "; ubound(stream.bytes)+1; " bytes"
 sleep
